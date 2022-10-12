@@ -88,7 +88,9 @@ class UpGenerator(nn.Module):
         # )
     def forward(self,x):
         x=self.initial(x)
+        temp=x
         x=self.denseblock(x)
+        x=temp+x
         x=self.mid1(x)
         x=self.mid2(x)
         x=self.pixelSuffle(x)
@@ -126,7 +128,10 @@ class DownGenerator(nn.Module):
 
     def forward(self,x):
         x=self.inital(x)
-        x=self.mid1(self.denseblock(x))
+        temp=x
+        x=self.denseblock(x)
+        x=temp+x
+        x=self.mid1(x)
         x=self.mid2(x)
         x=self.last(x)
         return x
