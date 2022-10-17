@@ -13,73 +13,82 @@ class ResBlock(nn.Module):
     def forward(self,x):
         return x+self.res(x)
 
-class Dense_Layer(nn.Module):
-    def __init__(self, in_channels, growthrate, bn_size):
-        super(Dense_Layer, self).__init__()
-
-        #self.bn1 = nn.BatchNorm2d(in_channels)
-        self.conv1 = nn.Conv2d(
-            in_channels, bn_size * growthrate, kernel_size=1, bias=False
-        )
-
-        #self.bn2 = nn.BatchNorm2d(bn_size * growthrate)
-        self.conv2 = nn.Conv2d(
-            bn_size * growthrate, growthrate, kernel_size=3, padding=1, bias=False
-        )
-
-    def forward(self, prev_features):
-        out1 = torch.cat(prev_features, dim=1)
-        out1 = self.conv1(F.relu(out1))
-        out2 = self.conv2(F.relu(out1))
-        return out2
 
 
-class Dense_Block(nn.ModuleDict):
-    def __init__(self, n_layers, in_channels, growthrate, bn_size):
-        """
-        A Dense block consists of `n_layers` of `Dense_Layer`
-        Parameters
-        ----------
-            n_layers: Number of dense layers to be stacked
-            in_channels: Number of input channels for first layer in the block
-            growthrate: Growth rate (k) as mentioned in DenseNet paper
-            bn_size: Multiplicative factor for # of bottleneck layers
-        """
-        super(Dense_Block, self).__init__()
+class DenseConvBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, growth_channels: int):
+        super(DenseConvBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv2 = nn.Conv2d(int(growth_channels * 1), out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv3 = nn.Conv2d(int(growth_channels * 2), out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv4 = nn.Conv2d(int(growth_channels * 3), out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv5 = nn.Conv2d(int(growth_channels * 4), out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv6 = nn.Conv2d(int(growth_channels * 5), out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv7 = nn.Conv2d(int(growth_channels * 6), out_channels, (3, 3), (1, 1), (1, 1))
+        self.conv8 = nn.Conv2d(int(growth_channels * 7), out_channels, (3, 3), (1, 1), (1, 1))
 
-        layers = dict()
-        for i in range(n_layers):
-            layer = Dense_Layer(in_channels + i * growthrate, growthrate, bn_size)
-            layers['dense{}'.format(i)] = layer
+        self.relu = nn.ReLU(True)
 
-        self.block = nn.ModuleDict(layers)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out1 = self.relu(self.conv1(x))
 
-    def forward(self, features):
-        if (isinstance(features, torch.Tensor)):
-            #print(f'size is {features.size()}')
-            features = [features]
+        out2 = self.relu(self.conv2(out1))
+        out2_concat = torch.cat([out1, out2], 1)
 
-        for _, layer in self.block.items():
-            new_features = layer(features)
-            features.append(new_features)
+        out3 = self.relu(self.conv3(out2_concat))
+        out3_concat = torch.cat([out1, out2, out3], 1)
 
-        return torch.cat(features, dim=1)
+        out4 = self.relu(self.conv4(out3_concat))
+        out4_concat = torch.cat([out1, out2, out3, out4], 1)
 
+        out5 = self.relu(self.conv5(out4_concat))
+        out5_concat = torch.cat([out1, out2, out3, out4, out5], 1)
+
+        out6 = self.relu(self.conv6(out5_concat))
+        out6_concat = torch.cat([out1, out2, out3, out4, out5, out6], 1)
+
+        out7 = self.relu(self.conv7(out6_concat))
+        out7_concat = torch.cat([out1, out2, out3, out4, out5, out6, out7], 1)
+
+        out8 = self.relu(self.conv8(out7_concat))
+        out8_concat = torch.cat([out1, out2, out3, out4, out5, out6, out7, out8], 1)
+
+        return out8_concat
 
 class UpGenerator(nn.Module):
-    def __init__(self, in_channels=3,num_residuals=16):
+    def __init__(self, in_channels=3):
         super().__init__()
         self.initial=nn.Sequential(
-            nn.Conv2d(in_channels,64,kernel_size=3,stride=1,padding=1),
+            nn.Conv2d(in_channels,128,kernel_size=3,stride=1,padding=1),
             nn.ReLU()
         )
-        # self.resBlock=nn.Sequential(
-        #     *[ResBlock(64) for _ in range(num_residuals)]
-        # )
-        self.denseblock=Dense_Block(10, 64, growthrate=32, bn_size=4)
-        self.mid1=nn.Conv2d(in_channels=384,out_channels=128,kernel_size=3,stride=1,padding=1)
-        self.mid2 = nn.Conv2d(in_channels=128, out_channels=48, kernel_size=3, stride=1, padding=1)
-        self.pixelSuffle=nn.PixelShuffle(2)
+        self.dcb1 = nn.Sequential(DenseConvBlock(128, 16, 16))
+        self.dcb2 = nn.Sequential(DenseConvBlock(256, 16, 16)) #256
+        self.dcb3 = nn.Sequential(DenseConvBlock(384, 16, 16))
+        self.dcb4 = nn.Sequential(DenseConvBlock(512, 16, 16))
+        self.dcb5 = nn.Sequential(DenseConvBlock(640, 16, 16))
+        self.dcb6 = nn.Sequential(DenseConvBlock(768, 16, 16))
+        self.dcb7 = nn.Sequential(DenseConvBlock(896, 16, 16))
+        self.dcb8 = nn.Sequential(DenseConvBlock(1024, 16, 16))
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(1152, 512, kernel_size=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 256, kernel_size=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # deconvolution layers
+        self.deconv = nn.Sequential(
+            nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=3 // 2, output_padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(256, 256, kernel_size=3, stride=2, padding=3 // 2, output_padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # reconstruction layer
+        self.reconstruction = nn.Conv2d(256,3, kernel_size=3, padding=3 // 2)
+       # self.mid2 = nn.Conv2d(in_channels=256, out_channels=48, kernel_size=3, stride=1, padding=1)
+       # self.pixelSuffle = nn.PixelShuffle(2)
         # self.last=nn.Sequential(
         #     nn.PixelShuffle()
         #     #nn.ConvTranspose2d(in_channels=64,out_channels=256,kernel_size=3,padding=1,stride=2,output_padding=1),
@@ -87,15 +96,29 @@ class UpGenerator(nn.Module):
         #     #nn.ConvTranspose2d(in_channels=256,out_channels=3,kernel_size=3,padding=1,stride=2,output_padding=1)
         # )
     def forward(self,x):
-        x=self.initial(x)
-        temp=x
-        x=self.denseblock(x)
-        x=temp+x
-        x=self.mid1(x)
-        x=self.mid2(x)
-        x=self.pixelSuffle(x)
-        x=self.pixelSuffle(x)
-        return x
+        out = self.initial(x)
+        dcb1 = self.dcb1(out)
+        out1 = torch.cat([dcb1, out], 1)
+        dcb2 = self.dcb2(out1)
+        out2 = torch.cat([dcb2, out1], 1)
+        dcb3 = self.dcb3(out2)
+        out3 = torch.cat([dcb3, out2], 1)
+        dcb4 = self.dcb4(out3)
+        out4 = torch.cat([dcb4, out3], 1)
+        dcb5 = self.dcb5(out4)
+        out5 = torch.cat([dcb5, out4], 1)
+        dcb6 = self.dcb6(out5)
+        out6 = torch.cat([dcb6, out5], 1)
+        dcb7 = self.dcb7(out6)
+        out7 = torch.cat([dcb7, out6], 1)
+        dcb8 = self.dcb8(out7)
+        out8 = torch.cat([dcb8, out7], 1)
+        out=self.bottleneck(out8)
+        out=self.deconv(out)
+        out=self.reconstruction(out)
+
+
+        return out
 
 
 
@@ -116,25 +139,98 @@ class ConvBlock(nn.Module):
 class DownGenerator(nn.Module):
     def __init__(self,in_channels=3):
         super().__init__()
-        self.inital=nn.Sequential(
-            ConvBlock(in_channels,pool=False),
-            ConvBlock(64,pool=True),
-            ConvBlock(64,pool=True)
+        self.initial = nn.Sequential(
+            nn.Conv2d(in_channels, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
         )
-        self.denseblock = Dense_Block(10, 64, growthrate=32, bn_size=4)
-        self.mid1 = nn.Conv2d(in_channels=384, out_channels=128, kernel_size=3, stride=1, padding=1)
-        self.mid2 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.last=nn.Conv2d(in_channels=64,out_channels=3,kernel_size=3,stride=1,padding=1)
+        self.dcb1 = nn.Sequential(DenseConvBlock(128, 16, 16))
+        self.dcb2 = nn.Sequential(DenseConvBlock(256, 16, 16))
+        self.dcb3 = nn.Sequential(DenseConvBlock(384, 16, 16))
+        self.dcb4 = nn.Sequential(DenseConvBlock(512, 16, 16))
+        self.dcb5 = nn.Sequential(DenseConvBlock(640, 16, 16))
+        self.dcb6 = nn.Sequential(DenseConvBlock(768, 16, 16))
+        self.dcb7 = nn.Sequential(DenseConvBlock(896, 16, 16))
+        self.dcb8 = nn.Sequential(DenseConvBlock(1024, 16, 16))
 
-    def forward(self,x):
-        x=self.inital(x)
-        temp=x
-        x=self.denseblock(x)
-        x=temp+x
-        x=self.mid1(x)
-        x=self.mid2(x)
-        x=self.last(x)
-        return x
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(1152, 256, kernel_size=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # deconvolution layers
+        # self.conv = nn.Sequential(
+        #     nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=3 // 2),
+        #     nn.ReLU(inplace=True),
+        #     nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=3 // 2),
+        #     nn.ReLU(inplace=True)
+        # )
+
+        # reconstruction layer
+        self.reconstruction = nn.Conv2d(256, 3, kernel_size=3, padding=3 // 2)
+
+    def forward(self, x):
+        out = self.initial(x)
+        dcb1 = self.dcb1(out)
+        out1 = torch.cat([dcb1, out], 1)
+        dcb2 = self.dcb2(out1)
+        out2 = torch.cat([dcb2, out1], 1)
+        dcb3 = self.dcb3(out2)
+        out3 = torch.cat([dcb3, out2], 1)
+        dcb4 = self.dcb4(out3)
+        out4 = torch.cat([dcb4, out3], 1)
+        dcb5 = self.dcb5(out4)
+        out5 = torch.cat([dcb5, out4], 1)
+        dcb6 = self.dcb6(out5)
+        out6 = torch.cat([dcb6, out5], 1)
+        dcb7 = self.dcb7(out6)
+        out7 = torch.cat([dcb7, out6], 1)
+        dcb8 = self.dcb8(out7)
+        out8 = torch.cat([dcb8, out7], 1)
+        out = self.bottleneck(out8)
+        out = self.conv(out)
+        out = self.reconstruction(out)
+
+        return out
+    #     super().__init__()
+    #     self.inital=nn.Sequential(
+    #         ConvBlock(in_channels,pool=False),
+    #         ConvBlock(64,pool=True),
+    #         ConvBlock(64,pool=True)
+    #     )
+    #     self.resBlock = nn.Sequential(
+    #         *[ResBlock(64) for _ in range(num_res)]
+    #     )
+    #     self.mid = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
+    #     self.last = nn.Conv2d(in_channels=64, out_channels=3, kernel_size=3, stride=1, padding=1)
+    #
+    # def forward(self,x):
+    #     x=self.inital(x)
+    #     temp=x
+    #     x=self.resBlock(x)
+    #     x=temp+x
+    #     x=self.mid(x)
+    #     x=self.last(x)
+    #     return x
+
+class GRL(nn.Module):
+    def __init__(self,in_channels=3):
+        super().__init__()
+        self.initial = nn.Sequential(
+            nn.Upsample(scale_factor=4, mode='bicubic'),
+            nn.Conv2d(in_channels,64, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 16, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(16,3, kernel_size=1, stride=1, padding=0),
+            nn.ReLU(),
+        )
+
+    def forward(self, x):
+        out=self.initial(x)
+        return out
+
 
 
 
