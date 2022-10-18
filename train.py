@@ -20,12 +20,13 @@ def mseloss(generated,ground):
     return loss_mse.mean()
 
 
-def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch):
+def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch):
 
     Upmodel.train()
-    #Downmodel.train()
+    Downmodel.train()
+    grl.train()
     print(Upmodel.training)
-    #print(Downmodel.training)
+    print(Downmodel.training)
     loop1 = tqdm(Train_loader, leave=True)
     batch_loss = []
     for idx,(LR,HR) in enumerate(loop1):
@@ -37,26 +38,26 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
 
         grl_op=grl(LR)
         up_forward = Upmodel(LR)+grl_op
-        #down_forward=Downmodel(up_forward)
+        down_forward=Downmodel(up_forward)
 
-        #down_backward=Downmodel(HR)
-        #up_backward=Upmodel(down_backward)
+        down_backward=Downmodel(HR)
+        up_backward=Upmodel(down_backward)
 
         mse_loss=mse(up_forward,HR)
-        # cyc_fwd=mse(down_forward, LR)
-        # cyc_bwd=mse(up_backward, HR)
+        cyc_fwd=mse(down_forward, LR)
+        cyc_bwd=mse(up_backward, HR)
         #
-        # cycle_loss=(cyc_bwd+cyc_fwd)/2
+        cycle_loss=(cyc_bwd+cyc_fwd)/2
         #
         # idt_fwd=0#mse(up_forward,HR).mean()
         # idt_bwd=0#mse(down_backward,LR).mean()
         #
         # identity_loss=0#(idt_bwd+idt_fwd)/2
 
-        perc_loss=perceptualLoss(up_forward,HR)
+        #perc_loss=perceptualLoss(up_forward,HR)
 
 #1.489
-        loss=(perc_loss/1.33+mse_loss/0.03)#+(cycle_loss/0.02)+)
+        loss=mse_loss+cycle_loss
 
         opt.zero_grad()
         loss.backward()
@@ -75,7 +76,8 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
                 os.makedirs(checkpoint_path)
             try:
                 torch.save(Upmodel.state_dict(), checkpoint_path + f'{idx}' + '_g.pt')
-                #torch.save(Downmodel.state_dict(), checkpoint_path + f'{idx}' + '_d.pt')
+                torch.save(Downmodel.state_dict(), checkpoint_path + f'{idx}' + '_d.pt')
+                torch.save(grl.state_dict(), checkpoint_path + f'{idx}' + '_grl.pt')
             except:
                 pass
 
@@ -85,7 +87,7 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
             #state_msg = (f'epoch:{epoch}; iteration {idx}; Loss: {"%.5f" % loss.item()}; psnr:{"%.5f" % psnr_score}')
 
             log_file = open(log_file_name, "+a")
-            new_line=f'mse:{"%.3f"%mse_loss.item()} ,perc loss:{"%.3f" % perc_loss.item()}' #,fwd_loss:{"%.3f"%cyc_fwd.item()},bwd_loss:{"%.3f"%cyc_bwd.item()} '
+            new_line=f'mse:{"%.3f"%mse_loss.item()}; Cycle loss:{"%.3f" % cycle_loss.item()}'# ,perc loss:{"%.3f" % perc_loss.item()}' #,fwd_loss:{"%.3f"%cyc_fwd.item()},bwd_loss:{"%.3f"%cyc_bwd.item()} '
             log_file.write(new_line)
             # new_line = f'Cycle loss:{"%.3f" % cycle_loss.item()},perc loss:{"%.3f" % perc_loss.item()}'+'\n'
             # log_file.write(new_line)
@@ -102,11 +104,11 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
 
 
     Upmodel.eval()
-    #Downmodel.eval()
+    Downmodel.eval()
+    grl.eval()
     print(Upmodel.training)
-    #print(Downmodel.training)
+    print(Downmodel.training)
     loop2 = tqdm(Val_loader, leave=True)
-
     Val_loss = 0.0
     Vbatch_loss =[]
     for idx,(LR,HR) in enumerate(loop2):
@@ -115,14 +117,20 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
 
         grl_op = grl(LR)
         up_forward = Upmodel(LR) + grl_op
+        down_forward = Downmodel(up_forward)
 
-        mse_loss = mse(up_forward, HR).mean()
+        down_backward = Downmodel(HR)
+        up_backward = Upmodel(down_backward)
 
+        mse_loss = mse(up_forward, HR)
+        cyc_fwd = mse(down_forward, LR)
+        cyc_bwd = mse(up_backward, HR)
 
+        cycle_loss = (cyc_bwd + cyc_fwd) / 2
 
-        perc_loss = perceptualLoss(up_forward, HR)
-
-        loss = (mse_loss) / 0.005 + perc_loss / 1.54
+        #perc_loss = perceptualLoss(up_forward, HR)
+        loss = mse_loss+cycle_loss  #perc=1.33
+        #loss = (mse_loss) / 0.005 + perc_loss / 1.54
 
         if idx % 50 == 0:
             img_path = f"{log_folder}/sample_val/{epoch}/"
@@ -133,10 +141,13 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
 
 
         Vbatch_loss.append(loss.item())
+        sr = up_forward.detach().cpu().permute(0, 2, 3, 1).numpy()
+        hr = HR.detach().cpu().permute(0, 2, 3, 1).numpy()
+        psnr_score = psnr(sr, hr)/config.BATCH_SIZE
 
     Val_loss=(sum(Vbatch_loss)/len(Vbatch_loss))
 
-    state_msg=(f'epoch:{epoch}; Training_loss:{Training_loss}; Val_loss:{Val_loss}')
+    state_msg=(f'epoch:{epoch}; Training_loss:{Training_loss}; Val_loss:{Val_loss}; psnr:{"%.3f" % psnr_score}')
     print(state_msg)
 
     log_file = open(log_file_name+"_train_val_loss", "+a")
@@ -150,8 +161,8 @@ def train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_fold
 def main():
     Upmodel=UpGenerator().to(config.DEVICE)
     grl=GRL().to(config.DEVICE)
-    #Downmodel=DownGenerator().to(config.DEVICE)
-    opt = optim.Adam(list(grl.parameters())+list(Upmodel.parameters()), lr=config.LEARNING_RATE,
+    Downmodel=DownGenerator().to(config.DEVICE)
+    opt = optim.Adam(list(Downmodel.parameters())+list(grl.parameters())+list(Upmodel.parameters()), lr=config.LEARNING_RATE,
                      betas=(0.9, 0.999), weight_decay=1e-3)
     #opt=optim.Adam(list(Downmodel.parameters())+list(Upmodel.parameters()),lr=config.LEARNING_RATE,betas=(0.9, 0.999),weight_decay=1e-3)
 
@@ -168,7 +179,7 @@ def main():
     log_file.write("Starting Training Try 1 \n")
     log_file.close()
     date_time = datetime.now()
-    trial_name="Test1"
+    trial_name="GRL_BLOCK_try1"
     post_fix = '%s_%s_%d_%d.txt' % (trial_name, date_time.date(), date_time.hour, date_time.minute)
     log_folder = 'trial_%s_%s_%d_%d' % (trial_name, date_time.date(), date_time.hour, date_time.minute)
 
@@ -192,7 +203,7 @@ def main():
     for epoch in range(config.NUM_EPOCHS):
         scheduler.step()
         print('Epoch:', epoch, 'LR:', scheduler.get_last_lr())
-        train_fn(Upmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch)
+        train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch)
         #state_msg = (f'Val_epoch:{epoch};Val_psnr:{psnr_score}; SSIM:{ssim_score}')
         #print(state_msg)
 

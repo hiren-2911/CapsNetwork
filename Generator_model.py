@@ -140,35 +140,39 @@ class DownGenerator(nn.Module):
     def __init__(self,in_channels=3):
         super().__init__()
         self.initial = nn.Sequential(
-            nn.Conv2d(in_channels, 128, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(in_channels, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
             nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        self.dcb1 = nn.Sequential(DenseConvBlock(128, 16, 16))
-        self.dcb2 = nn.Sequential(DenseConvBlock(256, 16, 16))
-        self.dcb3 = nn.Sequential(DenseConvBlock(384, 16, 16))
-        self.dcb4 = nn.Sequential(DenseConvBlock(512, 16, 16))
-        self.dcb5 = nn.Sequential(DenseConvBlock(640, 16, 16))
-        self.dcb6 = nn.Sequential(DenseConvBlock(768, 16, 16))
-        self.dcb7 = nn.Sequential(DenseConvBlock(896, 16, 16))
-        self.dcb8 = nn.Sequential(DenseConvBlock(1024, 16, 16))
+        self.dcb1 = nn.Sequential(DenseConvBlock(128, 8, 8))
+        self.dcb2 = nn.Sequential(DenseConvBlock(192, 8, 8))
+        self.dcb3 = nn.Sequential(DenseConvBlock(256, 8, 8))
+        self.dcb4 = nn.Sequential(DenseConvBlock(320, 8, 8))
+        self.dcb5 = nn.Sequential(DenseConvBlock(384, 8, 8))
+        self.dcb6 = nn.Sequential(DenseConvBlock(448, 8, 8))
+        self.dcb7 = nn.Sequential(DenseConvBlock(512, 8, 8))
+        self.dcb8 = nn.Sequential(DenseConvBlock(576, 8, 8))
 
         self.bottleneck = nn.Sequential(
-            nn.Conv2d(1152, 256, kernel_size=1),
+            nn.Conv2d(448, 256, kernel_size=1),
+            nn.ReLU(inplace=True),
+            #nn.Conv2d(512, 256, kernel_size=1),
+            #nn.ReLU(inplace=True)
+        )
+
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=3 // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=3 // 2),
             nn.ReLU(inplace=True)
         )
 
-        # deconvolution layers
-        # self.conv = nn.Sequential(
-        #     nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=3 // 2),
-        #     nn.ReLU(inplace=True),
-        #     nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=3 // 2),
-        #     nn.ReLU(inplace=True)
-        # )
-
         # reconstruction layer
-        self.reconstruction = nn.Conv2d(256, 3, kernel_size=3, padding=3 // 2)
+        self.reconstruction = nn.Conv2d(64, 3, kernel_size=3, padding=3 // 2)
 
     def forward(self, x):
         out = self.initial(x)
@@ -182,37 +186,18 @@ class DownGenerator(nn.Module):
         out4 = torch.cat([dcb4, out3], 1)
         dcb5 = self.dcb5(out4)
         out5 = torch.cat([dcb5, out4], 1)
-        dcb6 = self.dcb6(out5)
-        out6 = torch.cat([dcb6, out5], 1)
-        dcb7 = self.dcb7(out6)
-        out7 = torch.cat([dcb7, out6], 1)
-        dcb8 = self.dcb8(out7)
-        out8 = torch.cat([dcb8, out7], 1)
-        out = self.bottleneck(out8)
+       #dcb6 = self.dcb6(out5)
+       #out6 = torch.cat([dcb6, out5], 1)
+       #dcb7 = self.dcb7(out6)
+       #out7 = torch.cat([dcb7, out6], 1)
+       #dcb8 = self.dcb8(out7)
+       #out8 = torch.cat([dcb8, out7], 1)
+        out = self.bottleneck(out5)
         out = self.conv(out)
         out = self.reconstruction(out)
 
         return out
-    #     super().__init__()
-    #     self.inital=nn.Sequential(
-    #         ConvBlock(in_channels,pool=False),
-    #         ConvBlock(64,pool=True),
-    #         ConvBlock(64,pool=True)
-    #     )
-    #     self.resBlock = nn.Sequential(
-    #         *[ResBlock(64) for _ in range(num_res)]
-    #     )
-    #     self.mid = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)
-    #     self.last = nn.Conv2d(in_channels=64, out_channels=3, kernel_size=3, stride=1, padding=1)
-    #
-    # def forward(self,x):
-    #     x=self.inital(x)
-    #     temp=x
-    #     x=self.resBlock(x)
-    #     x=temp+x
-    #     x=self.mid(x)
-    #     x=self.last(x)
-    #     return x
+
 
 class GRL(nn.Module):
     def __init__(self,in_channels=3):
