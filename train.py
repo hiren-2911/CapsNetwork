@@ -7,7 +7,8 @@ import torch.optim as optim
 import config
 from tqdm import tqdm
 from torchvision.utils import save_image
-from Generator_model import UpGenerator, DownGenerator,GRL
+from Generator_model import UpGenerator, DownGenerator
+from UGEN import UNET
 from datetime import datetime
 import os
 import sys
@@ -20,11 +21,10 @@ def mseloss(generated,ground):
     return loss_mse.mean()
 
 
-def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch):
+def train_fn(Upmodel,Downmodel,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch):
 
     Upmodel.train()
     Downmodel.train()
-    grl.train()
     print(Upmodel.training)
     print(Downmodel.training)
     loop1 = tqdm(Train_loader, leave=True)
@@ -32,12 +32,7 @@ def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLos
     for idx,(LR,HR) in enumerate(loop1):
         LR=LR.to(config.DEVICE)
         HR=HR.to(config.DEVICE)
-
-
-
-
-        grl_op=grl(LR)
-        up_forward = Upmodel(LR)+grl_op
+        up_forward = Upmodel(LR)
         down_forward=Downmodel(up_forward)
 
         down_backward=Downmodel(HR)
@@ -87,7 +82,7 @@ def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLos
             #state_msg = (f'epoch:{epoch}; iteration {idx}; Loss: {"%.5f" % loss.item()}; psnr:{"%.5f" % psnr_score}')
 
             log_file = open(log_file_name, "+a")
-            new_line=f'mse:{"%.3f"%mse_loss.item()}; Cycle loss:{"%.3f" % cycle_loss.item()}'# ,perc loss:{"%.3f" % perc_loss.item()}' #,fwd_loss:{"%.3f"%cyc_fwd.item()},bwd_loss:{"%.3f"%cyc_bwd.item()} '
+            new_line=f'mse:{"%.3f"%mse_loss.item()}; Cycle loss:{"%.3f" % cycle_loss.item()}'+  '\n'# ,perc loss:{"%.3f" % perc_loss.item()}' #,fwd_loss:{"%.3f"%cyc_fwd.item()},bwd_loss:{"%.3f"%cyc_bwd.item()} '
             log_file.write(new_line)
             # new_line = f'Cycle loss:{"%.3f" % cycle_loss.item()},perc loss:{"%.3f" % perc_loss.item()}'+'\n'
             # log_file.write(new_line)
@@ -105,7 +100,6 @@ def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLos
 
     Upmodel.eval()
     Downmodel.eval()
-    grl.eval()
     print(Upmodel.training)
     print(Downmodel.training)
     loop2 = tqdm(Val_loader, leave=True)
@@ -115,8 +109,7 @@ def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLos
         LR=LR.to(config.DEVICE)
         HR=HR.to(config.DEVICE)
 
-        grl_op = grl(LR)
-        up_forward = Upmodel(LR) + grl_op
+        up_forward = Upmodel(LR)
         down_forward = Downmodel(up_forward)
 
         down_backward = Downmodel(HR)
@@ -159,10 +152,9 @@ def train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLos
 
 
 def main():
-    Upmodel=UpGenerator().to(config.DEVICE)
-    grl=GRL().to(config.DEVICE)
+    Upmodel=UNET(in_channels=3, out_channels=3).to(config.DEVICE)
     Downmodel=DownGenerator().to(config.DEVICE)
-    opt = optim.Adam(list(Downmodel.parameters())+list(grl.parameters())+list(Upmodel.parameters()), lr=config.LEARNING_RATE,
+    opt = optim.Adam(list(Downmodel.parameters())+list(Upmodel.parameters()), lr=config.LEARNING_RATE,
                      betas=(0.9, 0.999), weight_decay=1e-3)
     #opt=optim.Adam(list(Downmodel.parameters())+list(Upmodel.parameters()),lr=config.LEARNING_RATE,betas=(0.9, 0.999),weight_decay=1e-3)
 
@@ -173,13 +165,13 @@ def main():
     Train_dataset=Images(LR_root_dir=config.TRAIN_DIR+"/LR",HR_root_dir=config.TRAIN_DIR+"/HR",transfroms=config.transforms)
     val_dataset=Images(LR_root_dir=config.VAL_DIR+"/LR",HR_root_dir=config.VAL_DIR+"/HR",transfroms=config.transforms)
     Train_loader=DataLoader(dataset=Train_dataset,batch_size=config.BATCH_SIZE,shuffle=True,pin_memory=True,num_workers=config.NUM_WORKERS)
-    Val_loader=DataLoader(dataset=val_dataset,batch_size=8,pin_memory=True,shuffle=False)
+    Val_loader=DataLoader(dataset=val_dataset,batch_size=config.BATCH_SIZE,pin_memory=True,shuffle=False)
     perceptualLoss = PerceptualLoss(requires_grad=True).cuda()
     log_file = open("/home/ml/Hiren/Code/CycleCNN/Logs/log.txt", "w")
     log_file.write("Starting Training Try 1 \n")
     log_file.close()
     date_time = datetime.now()
-    trial_name="GRL_BLOCK_try1"
+    trial_name="try1_UNET"
     post_fix = '%s_%s_%d_%d.txt' % (trial_name, date_time.date(), date_time.hour, date_time.minute)
     log_folder = 'trial_%s_%s_%d_%d' % (trial_name, date_time.date(), date_time.hour, date_time.minute)
 
@@ -203,7 +195,7 @@ def main():
     for epoch in range(config.NUM_EPOCHS):
         scheduler.step()
         print('Epoch:', epoch, 'LR:', scheduler.get_last_lr())
-        train_fn(Upmodel,Downmodel,grl,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch)
+        train_fn(Upmodel,Downmodel,Train_loader,Val_loader,opt,mse,perceptualLoss,log_folder,log_file_name,epoch)
         #state_msg = (f'Val_epoch:{epoch};Val_psnr:{psnr_score}; SSIM:{ssim_score}')
         #print(state_msg)
 
