@@ -15,7 +15,7 @@ class Block(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, in_channels=3, features=[64, 128, 256, 512]):
+    def __init__(self, in_channels=1, features=[64, 128, 256, 512]):
         super().__init__()
         self.initial = nn.Sequential(
             nn.Conv2d(
@@ -42,8 +42,8 @@ class Discriminator(nn.Module):
         return torch.sigmoid(self.model(x))
 
 def test():
-    x = torch.randn((5, 3, 280,280))
-    model = Discriminator(in_channels=3)
+    x = torch.randn((5, 1, 280,280))
+    model = Discriminator(in_channels=1)
     preds = model(x)
     print(preds.shape)
 
